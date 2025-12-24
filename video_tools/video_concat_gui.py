@@ -426,15 +426,32 @@ def process_batch(
             out_path = output_dir / f"{base_name}.mp4"
 
             log(f"导出到: {out_path}")
-            final_clip.write_videofile(
-                str(out_path),
-                codec="libx264",
-                audio_codec="aac",
-                temp_audiofile=str(output_dir / f".temp_audio_{combo_idx}.m4a"),
-                remove_temp=True,
-                threads=os.cpu_count() or 4,
-                fps=merged_clip.fps,
-            )
+            # 确保输出目录存在
+            output_dir.mkdir(parents=True, exist_ok=True)
+            # 确保输出路径有效
+            if not out_path or not out_path.parent.exists():
+                raise RuntimeError(f"无法创建输出文件: {out_path}")
+            
+            # 临时音频文件路径
+            temp_audio_path = output_dir / f".temp_audio_{combo_idx}.m4a"
+            try:
+                final_clip.write_videofile(
+                    str(out_path),
+                    codec="libx264",
+                    audio_codec="aac",
+                    temp_audiofile=str(temp_audio_path),
+                    remove_temp=True,
+                    threads=os.cpu_count() or 4,
+                    fps=merged_clip.fps,
+                )
+            except Exception as e:
+                # 清理可能的临时文件
+                if temp_audio_path.exists():
+                    try:
+                        temp_audio_path.unlink()
+                    except:
+                        pass
+                raise RuntimeError(f"导出视频失败: {e}")
 
             # 释放资源
             final_clip.close()
@@ -452,7 +469,29 @@ class App(tk.Tk):
         super().__init__()
         self.title("批量视频拼接（A+B + 字幕 + 音频）")
         self.geometry("720x520")
-        self.config_path = Path.home() / ".video_concat_gui_config.json"
+        
+        # 配置文件路径：打包后使用 exe 同目录，开发环境使用用户目录
+        if getattr(sys, 'frozen', False):
+            # 打包后的 exe 模式
+            if hasattr(sys, '_MEIPASS'):
+                # --onefile 模式：配置文件放在用户目录
+                base_path = Path.home()
+            else:
+                # --onedir 模式：配置文件放在 exe 同目录
+                base_path = Path(sys.executable).parent
+        else:
+            # 开发模式：使用用户目录
+            base_path = Path.home()
+        
+        # 确保目录存在
+        try:
+            base_path.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            # 如果无法创建，使用临时目录
+            import tempfile
+            base_path = Path(tempfile.gettempdir())
+        
+        self.config_path = base_path / ".video_concat_gui_config.json"
 
         # 变量
         self.var_folder_a = tk.StringVar()
@@ -611,35 +650,49 @@ class App(tk.Tk):
             "sharpness": round(float(self.var_sharpness.get()), 1),
         }
         try:
-            with open(self.config_path, "w", encoding="utf-8") as f:
-                json.dump(data, f, ensure_ascii=False, indent=2)
-            self._log(f"配置已保存到 {self.config_path}")
+            # 确保目录存在
+            if self.config_path and self.config_path.parent:
+                self.config_path.parent.mkdir(parents=True, exist_ok=True)
+            # 确保文件对象有效
+            config_file = open(self.config_path, "w", encoding="utf-8")
+            if config_file:
+                json.dump(data, config_file, ensure_ascii=False, indent=2)
+                config_file.close()
+                self._log(f"配置已保存到 {self.config_path}")
+            else:
+                raise IOError("无法创建配置文件")
         except Exception as e:
-            messagebox.showerror("错误", f"保存配置失败: {e}")
+            error_msg = f"保存配置失败: {e}"
+            self._log(error_msg)
+            messagebox.showerror("错误", error_msg)
 
     def _load_config(self):
-        if not self.config_path.exists():
+        if not self.config_path or not self.config_path.exists():
             return
         try:
-            with open(self.config_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            self.var_folder_a.set(data.get("folder_a", ""))
-            self.var_folder_b.set(data.get("folder_b", ""))
-            self.var_subs.set(data.get("folder_subs", ""))
-            self.var_audios.set(data.get("folder_audios", ""))
-            self.var_output.set(data.get("folder_output", ""))
-            self.var_font_path.set(data.get("font_path", ""))
-            self.var_brightness.set(round(float(data.get("brightness", 1.0)), 1))
-            self.var_font_size.set(int(data.get("font_size", 48)))
-            self.var_position.set(data.get("position", "bottom"))
-            self.var_pos_x.set(float(data.get("pos_x", 0.5)))
-            self.var_pos_y.set(float(data.get("pos_y", 0.85)))
-            self.var_exposure.set(round(float(data.get("exposure", 0.0)), 1))
-            self.var_contrast.set(round(float(data.get("contrast", 1.0)), 1))
-            self.var_saturation.set(round(float(data.get("saturation", 1.0)), 1))
-            self.var_temperature.set(round(float(data.get("temperature", 0.0)), 1))
-            self.var_sharpness.set(round(float(data.get("sharpness", 1.0)), 1))
-            self._log(f"已加载配置: {self.config_path}")
+            config_file = open(self.config_path, "r", encoding="utf-8")
+            if config_file:
+                data = json.load(config_file)
+                config_file.close()
+                self.var_folder_a.set(data.get("folder_a", ""))
+                self.var_folder_b.set(data.get("folder_b", ""))
+                self.var_subs.set(data.get("folder_subs", ""))
+                self.var_audios.set(data.get("folder_audios", ""))
+                self.var_output.set(data.get("folder_output", ""))
+                self.var_font_path.set(data.get("font_path", ""))
+                self.var_brightness.set(round(float(data.get("brightness", 1.0)), 1))
+                self.var_font_size.set(int(data.get("font_size", 48)))
+                self.var_position.set(data.get("position", "bottom"))
+                self.var_pos_x.set(float(data.get("pos_x", 0.5)))
+                self.var_pos_y.set(float(data.get("pos_y", 0.85)))
+                self.var_exposure.set(round(float(data.get("exposure", 0.0)), 1))
+                self.var_contrast.set(round(float(data.get("contrast", 1.0)), 1))
+                self.var_saturation.set(round(float(data.get("saturation", 1.0)), 1))
+                self.var_temperature.set(round(float(data.get("temperature", 0.0)), 1))
+                self.var_sharpness.set(round(float(data.get("sharpness", 1.0)), 1))
+                self._log(f"已加载配置: {self.config_path}")
+            else:
+                self._log("无法打开配置文件")
         except Exception as e:
             self._log(f"加载配置失败，使用默认值: {e}")
 
