@@ -75,6 +75,7 @@ Ubuntu: sudo apt-get install -y imagemagick fonts-dejavu-core）。
 """
 
 import os
+import sys
 import threading
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
@@ -82,6 +83,41 @@ from pathlib import Path
 from typing import List, Tuple
 import re
 import json
+
+# 设置 ffmpeg 路径（打包后自动查找）
+def setup_ffmpeg():
+    """设置 ffmpeg 路径，优先使用打包的 ffmpeg.exe"""
+    if getattr(sys, 'frozen', False):
+        # 打包后的 exe 模式（PyInstaller --onefile）
+        # 在 --onefile 模式下，数据文件会被解压到临时目录
+        if hasattr(sys, '_MEIPASS'):
+            # --onefile 模式：数据文件在临时目录
+            base_path = Path(sys._MEIPASS)
+        else:
+            # --onedir 模式：数据文件在 exe 同目录
+            base_path = Path(sys.executable).parent
+        
+        ffmpeg_exe = base_path / "ffmpeg.exe"
+        if ffmpeg_exe.exists():
+            os.environ["IMAGEIO_FFMPEG_EXE"] = str(ffmpeg_exe)
+            os.environ["FFMPEG_BINARY"] = str(ffmpeg_exe)
+            # 也设置 moviepy 使用的环境变量
+            os.environ["MOVIEPY_FFMPEG_BINARY"] = str(ffmpeg_exe)
+            return
+    
+    # 开发模式：尝试使用 imageio-ffmpeg
+    try:
+        import imageio_ffmpeg
+        ffmpeg_bin = imageio_ffmpeg.get_ffmpeg_exe()
+        if ffmpeg_bin:
+            os.environ["IMAGEIO_FFMPEG_EXE"] = ffmpeg_bin
+            os.environ["FFMPEG_BINARY"] = ffmpeg_bin
+            os.environ["MOVIEPY_FFMPEG_BINARY"] = ffmpeg_bin
+    except Exception:
+        pass
+
+# 在导入 moviepy 之前设置 ffmpeg
+setup_ffmpeg()
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageEnhance

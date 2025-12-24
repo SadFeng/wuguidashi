@@ -66,9 +66,59 @@ def check_dependencies():
         subprocess.check_call([sys.executable, "-m", "pip", "install", "pyinstaller"])
         print("✓ PyInstaller 安装完成")
 
+def download_ffmpeg():
+    """下载 ffmpeg.exe（如果不存在）"""
+    ffmpeg_path = SCRIPT_DIR / "ffmpeg.exe"
+    if ffmpeg_path.exists():
+        print(f"✓ 找到 ffmpeg.exe: {ffmpeg_path}")
+        return ffmpeg_path
+    
+    print("正在下载 ffmpeg.exe...")
+    try:
+        # 优先使用 imageio-ffmpeg 下载（如果可用）
+        try:
+            import imageio_ffmpeg
+            print("使用 imageio-ffmpeg 下载 ffmpeg...")
+            ffmpeg_bin = imageio_ffmpeg.get_ffmpeg_exe()
+            if ffmpeg_bin and os.path.exists(ffmpeg_bin):
+                shutil.copy2(ffmpeg_bin, ffmpeg_path)
+                print(f"✓ ffmpeg.exe 下载完成: {ffmpeg_path}")
+                return ffmpeg_path
+        except ImportError:
+            print("imageio-ffmpeg 未安装，尝试安装...")
+            subprocess.check_call([sys.executable, "-m", "pip", "install", "imageio-ffmpeg"], 
+                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            import imageio_ffmpeg
+            ffmpeg_bin = imageio_ffmpeg.get_ffmpeg_exe()
+            if ffmpeg_bin and os.path.exists(ffmpeg_bin):
+                shutil.copy2(ffmpeg_bin, ffmpeg_path)
+                print(f"✓ ffmpeg.exe 下载完成: {ffmpeg_path}")
+                return ffmpeg_path
+        except Exception as e:
+            print(f"imageio-ffmpeg 下载失败: {e}")
+        
+        print("✗ 无法下载 ffmpeg.exe，请确保已安装 imageio-ffmpeg")
+        print("   运行: pip install imageio-ffmpeg")
+        return None
+    except Exception as e:
+        print(f"✗ 下载 ffmpeg.exe 失败: {e}")
+        print("请手动下载 ffmpeg.exe 并放在 video_tools 目录")
+        return None
+
 def build_exe():
     """使用 PyInstaller 打包"""
     print("\n开始打包...")
+    
+    # 下载或检查 ffmpeg
+    ffmpeg_path = download_ffmpeg()
+    if not ffmpeg_path or not ffmpeg_path.exists():
+        print("⚠️  警告: 未找到 ffmpeg.exe，打包将继续但用户需要手动安装 ffmpeg")
+        ffmpeg_data = None
+    else:
+        # Windows 使用分号分隔，Linux/Mac 使用冒号
+        separator = ";" if sys.platform == "win32" else ":"
+        ffmpeg_data = f"{ffmpeg_path}{separator}."
+        print(f"✓ 将包含 ffmpeg.exe 到打包文件中")
     
     # PyInstaller 命令参数
     cmd = [
@@ -78,6 +128,8 @@ def build_exe():
         "--windowed",  # 隐藏控制台窗口（GUI 应用）
         "--clean",  # 清理临时文件
         "--noconfirm",  # 覆盖已存在的输出文件
+        "--copy-metadata", "imageio",  # 复制 imageio 的元数据
+        "--copy-metadata", "imageio-ffmpeg",  # 复制 imageio-ffmpeg 的元数据
     ]
     
     # 如果有图标，添加图标参数
@@ -102,7 +154,18 @@ def build_exe():
         "pysrt",
         "numpy",
         "imageio",
+        "imageio.plugins",
         "imageio.plugins.ffmpeg",
+        "imageio.plugins.ffmpeg.ffmpeg_reader",
+        "imageio.plugins.ffmpeg.ffmpeg_writer",
+        "imageio_ffmpeg",
+        "importlib.metadata",
+        "importlib.metadata._adapters",
+        "importlib.metadata._collections",
+        "importlib.metadata._functools",
+        "importlib.metadata._itertools",
+        "importlib.metadata._meta",
+        "importlib.metadata._text",
         "json",
         "re",
         "pathlib",
@@ -110,8 +173,15 @@ def build_exe():
     for imp in hidden_imports:
         cmd.extend(["--hidden-import", imp])
     
-    # 添加数据文件（如果需要包含字体文件等）
-    # cmd.extend(["--add-data", "字体文件路径;."])
+    # 收集 imageio 的所有子模块和元数据
+    cmd.extend(["--collect-submodules", "imageio"])
+    cmd.extend(["--collect-submodules", "imageio_ffmpeg"])
+    cmd.extend(["--collect-all", "imageio"])
+    cmd.extend(["--collect-all", "imageio_ffmpeg"])
+    
+    # 添加 ffmpeg.exe 到数据文件
+    if ffmpeg_data:
+        cmd.extend(["--add-data", ffmpeg_data])
     
     # 添加主脚本
     cmd.append(str(GUI_SCRIPT))
@@ -130,7 +200,10 @@ def build_exe():
             print(f"输出文件: {exe_path}")
             print(f"文件大小: {size_mb:.1f} MB")
             print("\n注意事项：")
-            print("1. 确保目标机器已安装 ffmpeg，或与 exe 同目录放置 ffmpeg.exe")
+            if ffmpeg_path and ffmpeg_path.exists():
+                print("1. ✓ ffmpeg.exe 已包含在打包文件中，用户无需单独安装")
+            else:
+                print("1. ⚠️  ffmpeg.exe 未包含，用户需要手动安装 ffmpeg")
             print("2. 首次运行可能需要几秒钟加载时间")
             print("3. 如果遇到 '找不到模块' 错误，可能需要添加更多 --hidden-import")
         else:
@@ -148,18 +221,7 @@ def create_readme():
 一、系统要求
 -----------
 1. Windows 7 或更高版本
-2. 需要安装 ffmpeg（moviepy 依赖）
-
-二、ffmpeg 安装方法
-------------------
-方法 1：下载 ffmpeg 并添加到 PATH
-- 访问 https://ffmpeg.org/download.html
-- 下载 Windows 版本
-- 解压后将 bin 目录添加到系统 PATH
-
-方法 2：将 ffmpeg.exe 放在 exe 同目录
-- 下载 ffmpeg.exe
-- 将其放在 video_concat_gui.exe 同一文件夹中
+2. ✓ ffmpeg 已内置，无需单独安装
 
 三、使用方法
 -----------
@@ -193,7 +255,7 @@ def create_readme():
 五、常见问题
 -----------
 Q: 提示找不到 ffmpeg？
-A: 请确保已安装 ffmpeg 并添加到 PATH，或将 ffmpeg.exe 放在 exe 同目录
+A: 正常情况下不会出现此问题，ffmpeg 已内置。如仍有问题，请提交 Issue
 
 Q: 处理速度慢？
 A: 视频处理需要时间，请耐心等待。可以查看日志输出了解进度
