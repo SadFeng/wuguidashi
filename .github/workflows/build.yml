@@ -1,28 +1,101 @@
-name: Build Windows EXE
+name: Build Video Concat GUI (Windows EXE)
 
 on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'video_tools/**'
+      - '.github/workflows/build_video_tools.yml'
+  pull_request:
+    branches:
+      - main
+      - master
+    paths:
+      - 'video_tools/**'
+  workflow_dispatch:  # 允许手动触发
   release:
-    types: [created]
+    types: [created]  # 创建 release 时自动打包
 
 jobs:
   build:
     runs-on: windows-latest
+    
     steps:
-      - uses: actions/checkout@v2
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: '3.10'
+          cache: 'pip'
+
       - name: Install dependencies
         run: |
+          python -m pip install --upgrade pip
           pip install -r video_tools/requirements.txt
           pip install pyinstaller
-      - name: Build exe
+
+      - name: Build EXE
         run: |
           cd video_tools
-          python build_exe.py
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v2
+          python -m PyInstaller --name=video_concat_gui --onefile --windowed --clean --noconfirm ^
+            --hidden-import=tkinter --hidden-import=tkinter.ttk --hidden-import=tkinter.filedialog --hidden-import=tkinter.messagebox ^
+            --hidden-import=PIL --hidden-import=PIL.Image --hidden-import=PIL.ImageDraw --hidden-import=PIL.ImageFont --hidden-import=PIL.ImageEnhance ^
+            --hidden-import=moviepy --hidden-import=moviepy.editor --hidden-import=moviepy.video.fx ^
+            --hidden-import=pysrt --hidden-import=numpy --hidden-import=imageio --hidden-import=imageio.plugins.ffmpeg ^
+            --hidden-import=json --hidden-import=re --hidden-import=pathlib ^
+            video_concat_gui.py
+
+      - name: Create README for distribution
+        run: |
+          cd video_tools/dist
+          echo 批量视频拼接工具 - 使用说明 > 使用说明.txt
+          echo ===================================== >> 使用说明.txt
+          echo. >> 使用说明.txt
+          echo 一、系统要求 >> 使用说明.txt
+          echo ----------- >> 使用说明.txt
+          echo 1. Windows 7 或更高版本 >> 使用说明.txt
+          echo 2. 需要安装 ffmpeg（moviepy 依赖） >> 使用说明.txt
+          echo. >> 使用说明.txt
+          echo 二、ffmpeg 安装方法 >> 使用说明.txt
+          echo ------------------ >> 使用说明.txt
+          echo 方法 1：下载 ffmpeg 并添加到 PATH >> 使用说明.txt
+          echo - 访问 https://ffmpeg.org/download.html >> 使用说明.txt
+          echo - 下载 Windows 版本 >> 使用说明.txt
+          echo - 解压后将 bin 目录添加到系统 PATH >> 使用说明.txt
+          echo. >> 使用说明.txt
+          echo 方法 2：将 ffmpeg.exe 放在 exe 同目录 >> 使用说明.txt
+          echo - 下载 ffmpeg.exe >> 使用说明.txt
+          echo - 将其放在 video_concat_gui.exe 同一文件夹中 >> 使用说明.txt
+          echo. >> 使用说明.txt
+          echo 三、使用方法 >> 使用说明.txt
+          echo ----------- >> 使用说明.txt
+          echo 1. 双击运行 video_concat_gui.exe >> 使用说明.txt
+          echo 2. 选择文件夹并调整参数 >> 使用说明.txt
+          echo 3. 点击"开始处理" >> 使用说明.txt
+        shell: cmd
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: video_concat_gui
-          path: video_tools/dist/video_concat_gui.exe
+          name: video_concat_gui_windows
+          path: |
+            video_tools/dist/video_concat_gui.exe
+            video_tools/dist/使用说明.txt
+          retention-days: 30
+
+      - name: Create Release (if tag)
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            video_tools/dist/video_concat_gui.exe
+            video_tools/dist/使用说明.txt
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
