@@ -319,6 +319,7 @@ def main():
     parser.add_argument("--saturation", type=float, default=1.0, help="饱和度，>1 更鲜艳，<1 更灰（步进 0.1，1 不变）")
     parser.add_argument("--temperature", type=float, default=0.0, help="色温，-1 偏冷，+1 偏暖（步进 0.1）")
     parser.add_argument("--sharpness", type=float, default=1.0, help="锐度，>1 更锐利，<1 更柔（步进 0.1，1 不变）")
+    parser.add_argument("--disable-color", action="store_true", help="关闭调色（提高速度）")
     parser.add_argument(
         "--font-size",
         type=int,
@@ -399,15 +400,16 @@ def main():
             # 拼接视频：A + B
             merged_clip = concatenate_videoclips([clip_a, clip_b])
 
-            # 颜色调整（应用在整体拼接后的视频上）
-            merged_clip = apply_color_adjustments(
-                merged_clip,
-                exposure=args.exposure,
-                contrast=args.contrast,
-                saturation=args.saturation,
-                temperature=args.temperature,
-                sharpness=args.sharpness,
-            )
+            # 颜色调整（应用在整体拼接后的视频上，可关闭以加速）
+            if not args.disable_color:
+                merged_clip = apply_color_adjustments(
+                    merged_clip,
+                    exposure=args.exposure,
+                    contrast=args.contrast,
+                    saturation=args.saturation,
+                    temperature=args.temperature,
+                    sharpness=args.sharpness,
+                )
 
             # 加载音频
             audio_clip = AudioFileClip(str(audio_path))
@@ -450,6 +452,7 @@ def main():
                 threads=os.cpu_count() or 4,
                 fps=merged_clip.fps,
                 logger=None,  # 禁用进度条
+                ffmpeg_params=["-preset", "ultrafast"],  # 提速（体积略增）
             )
 
             # 释放资源

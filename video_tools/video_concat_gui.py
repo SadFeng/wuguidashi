@@ -342,6 +342,7 @@ def process_batch(
     saturation: float = 1.0,
     temperature: float = 0.0,
     sharpness: float = 1.0,
+    enable_color: bool = True,
     logger=None,
 ):
     """批量处理核心逻辑。"""
@@ -394,15 +395,16 @@ def process_batch(
             # 拼接视频：A + B
             merged_clip = concatenate_videoclips([clip_a, clip_b])
 
-            # 调色
-            merged_clip = apply_color_adjustments(
-                merged_clip,
-                exposure=exposure,
-                contrast=contrast,
-                saturation=saturation,
-                temperature=temperature,
-                sharpness=sharpness,
-            )
+            # 调色（可选，关闭可提高速度）
+            if enable_color:
+                merged_clip = apply_color_adjustments(
+                    merged_clip,
+                    exposure=exposure,
+                    contrast=contrast,
+                    saturation=saturation,
+                    temperature=temperature,
+                    sharpness=sharpness,
+                )
 
             # 加载音频
             audio_clip = AudioFileClip(str(audio_path))
@@ -522,6 +524,7 @@ class App(tk.Tk):
         self.var_saturation = tk.DoubleVar(value=1.0)
         self.var_temperature = tk.DoubleVar(value=0.0)
         self.var_sharpness = tk.DoubleVar(value=1.0)
+        self.var_enable_color = tk.BooleanVar(value=True)
 
         self._build_ui()
         self._load_config()
@@ -589,30 +592,33 @@ class App(tk.Tk):
         # 调色参数
         frame_color = ttk.LabelFrame(self, text="调色")
         frame_color.pack(fill="x", **pad)
-        ttk.Label(frame_color, text="曝光").grid(row=0, column=0, sticky="w")
+        ttk.Checkbutton(frame_color, text="启用调色（关闭可加速导出）", variable=self.var_enable_color).grid(
+            row=0, column=0, sticky="w", padx=(0, 6), pady=(0, 4)
+        )
+        ttk.Label(frame_color, text="曝光").grid(row=1, column=0, sticky="w")
         ttk.Scale(frame_color, from_=-1.0, to=1.0, orient="horizontal",
-                  variable=self.var_exposure).grid(row=0, column=1, sticky="ew", padx=6)
-        ttk.Label(frame_color, textvariable=self.var_exposure, width=6).grid(row=0, column=2)
+                  variable=self.var_exposure).grid(row=1, column=1, sticky="ew", padx=6)
+        ttk.Label(frame_color, textvariable=self.var_exposure, width=6).grid(row=1, column=2)
 
-        ttk.Label(frame_color, text="对比度").grid(row=1, column=0, sticky="w")
+        ttk.Label(frame_color, text="对比度").grid(row=2, column=0, sticky="w")
         ttk.Scale(frame_color, from_=0.2, to=2.5, orient="horizontal",
-                  variable=self.var_contrast).grid(row=1, column=1, sticky="ew", padx=6)
-        ttk.Label(frame_color, textvariable=self.var_contrast, width=6).grid(row=1, column=2)
+                  variable=self.var_contrast).grid(row=2, column=1, sticky="ew", padx=6)
+        ttk.Label(frame_color, textvariable=self.var_contrast, width=6).grid(row=2, column=2)
 
-        ttk.Label(frame_color, text="饱和度").grid(row=2, column=0, sticky="w")
+        ttk.Label(frame_color, text="饱和度").grid(row=3, column=0, sticky="w")
         ttk.Scale(frame_color, from_=0.0, to=2.5, orient="horizontal",
-                  variable=self.var_saturation).grid(row=2, column=1, sticky="ew", padx=6)
-        ttk.Label(frame_color, textvariable=self.var_saturation, width=6).grid(row=2, column=2)
+                  variable=self.var_saturation).grid(row=3, column=1, sticky="ew", padx=6)
+        ttk.Label(frame_color, textvariable=self.var_saturation, width=6).grid(row=3, column=2)
 
-        ttk.Label(frame_color, text="色温(-冷 +暖)").grid(row=3, column=0, sticky="w")
+        ttk.Label(frame_color, text="色温(-冷 +暖)").grid(row=4, column=0, sticky="w")
         ttk.Scale(frame_color, from_=-1.0, to=1.0, orient="horizontal",
-                  variable=self.var_temperature).grid(row=3, column=1, sticky="ew", padx=6)
-        ttk.Label(frame_color, textvariable=self.var_temperature, width=6).grid(row=3, column=2)
+                  variable=self.var_temperature).grid(row=4, column=1, sticky="ew", padx=6)
+        ttk.Label(frame_color, textvariable=self.var_temperature, width=6).grid(row=4, column=2)
 
-        ttk.Label(frame_color, text="锐度").grid(row=4, column=0, sticky="w")
+        ttk.Label(frame_color, text="锐度").grid(row=5, column=0, sticky="w")
         ttk.Scale(frame_color, from_=0.2, to=3.0, orient="horizontal",
-                  variable=self.var_sharpness).grid(row=4, column=1, sticky="ew", padx=6)
-        ttk.Label(frame_color, textvariable=self.var_sharpness, width=6).grid(row=4, column=2)
+                  variable=self.var_sharpness).grid(row=5, column=1, sticky="ew", padx=6)
+        ttk.Label(frame_color, textvariable=self.var_sharpness, width=6).grid(row=5, column=2)
         frame_color.columnconfigure(1, weight=1)
 
         frame_btn = ttk.Frame(self)
@@ -660,6 +666,7 @@ class App(tk.Tk):
             "saturation": round(float(self.var_saturation.get()), 1),
             "temperature": round(float(self.var_temperature.get()), 1),
             "sharpness": round(float(self.var_sharpness.get()), 1),
+            "enable_color": bool(self.var_enable_color.get()),
         }
         try:
             # 确保目录存在
@@ -702,6 +709,7 @@ class App(tk.Tk):
                 self.var_saturation.set(round(float(data.get("saturation", 1.0)), 1))
                 self.var_temperature.set(round(float(data.get("temperature", 0.0)), 1))
                 self.var_sharpness.set(round(float(data.get("sharpness", 1.0)), 1))
+                self.var_enable_color.set(bool(data.get("enable_color", True)))
                 self._log(f"已加载配置: {self.config_path}")
             else:
                 self._log("无法打开配置文件")
@@ -735,6 +743,7 @@ class App(tk.Tk):
             saturation = round(float(self.var_saturation.get()), 1)
             temperature = round(float(self.var_temperature.get()), 1)
             sharpness = round(float(self.var_sharpness.get()), 1)
+            enable_color = bool(self.var_enable_color.get())
 
             # 禁用按钮，开线程避免阻塞 GUI
             self.btn_start.config(state="disabled")
@@ -758,6 +767,7 @@ class App(tk.Tk):
                         saturation=saturation,
                         temperature=temperature,
                         sharpness=sharpness,
+                        enable_color=enable_color,
                         logger=self._log,
                     )
                     messagebox.showinfo("完成", "全部处理完成")
