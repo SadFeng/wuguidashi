@@ -83,6 +83,7 @@ from pathlib import Path
 from typing import List, Tuple
 import re
 import json
+import traceback
 
 # 设置 ffmpeg 路径（打包后自动查找）
 def setup_ffmpeg():
@@ -451,6 +452,8 @@ def process_batch(
                         temp_audio_path.unlink()
                     except:
                         pass
+                tb = traceback.format_exc()
+                log(f"导出异常: {e}\n{tb}")
                 raise RuntimeError(f"导出视频失败: {e}")
 
             # 释放资源
