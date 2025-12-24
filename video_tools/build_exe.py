@@ -23,6 +23,33 @@ import subprocess
 import sys
 from pathlib import Path
 
+# 修复 Windows 控制台编码问题
+if sys.platform == 'win32':
+    try:
+        # 尝试设置控制台为 UTF-8
+        import codecs
+        sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'strict')
+        sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'strict')
+    except Exception:
+        # 如果失败，使用安全的打印函数
+        def safe_print(*args, **kwargs):
+            try:
+                print(*args, **kwargs)
+            except UnicodeEncodeError:
+                # 将中文字符替换为 ASCII
+                safe_args = []
+                for arg in args:
+                    if isinstance(arg, str):
+                        try:
+                            arg.encode('ascii')
+                            safe_args.append(arg)
+                        except UnicodeEncodeError:
+                            safe_args.append(arg.encode('ascii', 'replace').decode('ascii'))
+                    else:
+                        safe_args.append(arg)
+                print(*safe_args, **kwargs)
+        print = safe_print
+
 # 获取脚本所在目录
 SCRIPT_DIR = Path(__file__).parent.absolute()
 GUI_SCRIPT = SCRIPT_DIR / "video_concat_gui.py"
