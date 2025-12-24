@@ -440,6 +440,7 @@ def main():
 
             print(f"导出到: {out_path}")
             # 使用较兼容的设置导出
+            # 禁用进度条（logger=None），避免在打包后 GUI 应用中 tqdm 写入 None 的 sys.stdout
             final_clip.write_videofile(
                 str(out_path),
                 codec="libx264",
@@ -448,6 +449,7 @@ def main():
                 remove_temp=True,
                 threads=os.cpu_count() or 4,
                 fps=merged_clip.fps,
+                logger=None,  # 禁用进度条
             )
 
             # 释放资源

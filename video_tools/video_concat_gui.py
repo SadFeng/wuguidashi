@@ -120,6 +120,13 @@ def setup_ffmpeg():
 # 在导入 moviepy 之前设置 ffmpeg
 setup_ffmpeg()
 
+# 修复打包后 GUI 应用中 sys.stdout 为 None 的问题
+# 设置一个虚拟的 stdout，避免 tqdm/proglog 报错
+if getattr(sys, 'frozen', False) and sys.stdout is None:
+    import io
+    sys.stdout = io.StringIO()
+    sys.stderr = io.StringIO()
+
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 # 兼容 Pillow 10+ 移除 ANTIALIAS 的问题
@@ -436,6 +443,7 @@ def process_batch(
             # 临时音频文件路径
             temp_audio_path = output_dir / f".temp_audio_{combo_idx}.m4a"
             try:
+                # 禁用进度条（logger=None），避免在 GUI 应用中 tqdm 写入 None 的 sys.stdout
                 final_clip.write_videofile(
                     str(out_path),
                     codec="libx264",
@@ -444,6 +452,7 @@ def process_batch(
                     remove_temp=True,
                     threads=os.cpu_count() or 4,
                     fps=merged_clip.fps,
+                    logger=None,  # 禁用进度条，避免 tqdm 在 GUI 应用中出错
                 )
             except Exception as e:
                 # 清理可能的临时文件
